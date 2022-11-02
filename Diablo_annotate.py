@@ -8,27 +8,36 @@ import json
 from multiprocessing.pool import Pool
 from numpy import array_split, ceil
 from time import time
+import platform
 
-ACMG_DB = 'clinvar dbsnp fathmm fathmm_mkl genocanyon gerp gnomad gnomad3 interpro lrt metalr metasvm ' \
-          'mutation_assessor mutationtaster omim polyphen2 provean sift siphy spliceai hpo'
+ACMG_DB = 'clinvar dbsnp fathmm fathmm_mkl genocanyon gerp gnomad3 interpro lrt metalr metasvm ' \
+          'mutation_assessor mutationtaster omim polyphen2 provean sift siphy spliceai hpo gnomad3_counts'
 
 parser = argparse.ArgumentParser(description='DIABLO ANNOTATE')
 
 parser.add_argument('-i', '--input', required=True, help='Input a vcf file', type=str)
-parser.add_argument('-o', '--output', required=True, help='Output in tsv format', type=str)
+parser.add_argument('-o', '--output', required=True, help='Output in tsv format (has to end with ".tsv")', type=str)
 parser.add_argument('-s', '--size', required=False, help='Number of lines in output', type=int)
 parser.add_argument('-d', '--data', required=True, help='Folder with databases', type=str)
 parser.add_argument('-t', '--threads', required=False, help='Number of threads to use', type=int, default=1)
+parser.add_argument('-S', '--splice', required=False,
+                    help='Create a separate file with predicted splice variants (SpliceAI)', type=bool, default=False)
 
 args = parser.parse_args()
 
 file_input = os.path.abspath(args.input)
 file_output = os.path.abspath(args.output)
 
-if args.input is not None:
-    os.system(
-        f"oc run {file_input} -l hg38 -t tsv -a {ACMG_DB} -n {file_input.split('/')[-1].split('.')[0]} \
-         -d {file_output.strip(file_output.split('/')[-1])}")
+if args.input is None:
+    raise Exception("Input is missing (-i)")
+else:
+    if platform.system() == 'Windows':
+        mod_n = file_input.split('\\')[-1].split('.')[0]
+        mod_d = file_output.strip(file_output.split('\\')[-1])
+        os.system(f"oc run {file_input} -l hg38 -t tsv -a {ACMG_DB} -n {mod_n} -d {mod_d}")
+    else:
+        os.system(f"oc run {file_input} -l hg38 -t tsv -a {ACMG_DB} -n {file_input.split('/')[-1].split('.')[0]} "
+                  f"-d {file_output.strip(file_output.split('/')[-1])}")
 
 start = time()
 
@@ -164,15 +173,9 @@ print('Databases loaded')
 def PVS1(subdf):
     PVS1_crit = []
     for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'so']) and (
+        if not pd.isna(subdf.loc[i, 'so']) and not pd.isna(subdf.loc[i, 'hpo.id']) and (
                 str(subdf.loc[i, 'so']).find('frameshift') > -1 or str(subdf.loc[i, 'so']) == 'stop_gained' or
                 str(subdf.loc[i, 'so']) == 'splice_site_variant'):
-            PVS1_crit.append(1)
-        elif not (pd.isna(subdf.loc[i, 'spliceai.ds_ag']) or not pd.isna(
-                subdf.loc[i, 'spliceai.ds_al']) or not pd.isna(subdf.loc[i, 'spliceai.ds_dg']) or not pd.isna(
-            subdf.loc[i, 'spliceai.ds_dl'])) and (
-                float(subdf.loc[i, 'spliceai.ds_ag']) >= 0.7 or float(subdf.loc[i, 'spliceai.ds_al']) >= 0.7 or
-                float(subdf.loc[i, 'spliceai.ds_dg']) >= 0.7 or float(subdf.loc[i, 'spliceai.ds_dl']) >= 0.7):
             PVS1_crit.append(1)
         else:
             PVS1_crit.append(0)
@@ -215,7 +218,8 @@ def PS3(subdf):
         if (not pd.isna(subdf.loc[i, 'clinvar.sig'])) and (
                 str(subdf.loc[i, 'clinvar.sig']).find('Pathogenic') > -1) and (
                 str(subdf.loc[i, 'clinvar.rev_stat']).find('reviewed by expert panel') > -1 or
-                str(subdf.loc[i, 'clinvar.sig']).find('practice guideline') > -1):
+                str(subdf.loc[i, 'clinvar.rev_stat']).find('practice guideline') > -1 or
+                str(subdf.loc[i, 'clinvar.rev_stat']).find('no conflicts') > -1):
             PS3_crit.append(1)
         else:
             PS3_crit.append(0)
@@ -523,7 +527,8 @@ def PP5(subdf):
                     str(subdf.loc[i, 'clinvar.sig']).find('conflict') < 0 or
                     str(subdf.loc[i, 'clinvar.sig']).find('Conflict') < 0) and \
                     (str(subdf.loc[i, 'clinvar.rev_stat']).find('expert') > -1 or
-                     str(subdf.loc[i, 'clinvar.rev_stat']).find('practical') > -1):
+                     str(subdf.loc[i, 'clinvar.rev_stat']).find('practical') > -1 or
+                     str(subdf.loc[i, 'clinvar.rev_stat']).find('no conflicts') > -1):
                 PP5_crit.append(2)
             elif (str(subdf.loc[i, 'clinvar.sig']).find('Pathogenic') > -1 or
                   str(subdf.loc[i, 'clinvar.sig']).find('pathogenic') > -1) and \
@@ -758,6 +763,12 @@ def pathogenicity_assignment(subdf):
     return print('Pathogenicity assigned')
 
 
+def splice(subdf):
+    splice_df = subdf.query("`spliceai.ds_al` > 0.7 or `spliceai.ds_dg` > 0.7 or "
+                            "`spliceai.ds_dl` > 0.7 or `spliceai.ds_ag` > 0.7")
+    return splice_df
+
+
 def main(subdf):
     PVS1(subdf)
     PS1(subdf)
@@ -820,6 +831,12 @@ else:
     final_final_pool.head(args.size).to_csv(os.path.abspath(args.output), sep='\t', index=False)
 
 remove()
+
+if args.splice is not False:
+    print('Writing file with splice variants...')
+    splice(final_final_pool).to_csv(os.path.abspath(args.output).replace('.tsv', '_splice.tsv'), sep='\t', index=False)
+else:
+    pass
 
 print('Success!')
 
