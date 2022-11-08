@@ -9,6 +9,7 @@ from multiprocessing.pool import Pool
 from numpy import array_split, ceil
 from time import time
 import platform
+import gzip
 
 ACMG_DB = 'clinvar dbsnp fathmm fathmm_mkl genocanyon gerp gnomad3 interpro lrt metalr metasvm ' \
           'mutation_assessor mutationtaster omim polyphen2 provean sift siphy spliceai hpo gnomad3_counts'
@@ -122,7 +123,7 @@ BS2_hom_het_dict = {"het": {'chr1': {},
                             'chrMT': {}}
                     }
 
-for line in open(os.path.join(args.data, 'BS2_mod.txt'), 'r').readlines():
+for line in gzip.open(os.path.join(args.data, 'BS2_mod.txt.gz'), 'rt').readlines():
     chr = line.split(' ')[0].strip()
     pos = line.split(' ')[1].strip()
     ref = line.split(' ')[2].strip()
@@ -134,7 +135,7 @@ for line in open(os.path.join(args.data, 'BS2_mod.txt'), 'r').readlines():
     if str(hom) == '1':
         BS2_hom_het_dict["hom"][chr][pos] = ref + '_' + alt
 
-bs2_hom_het_ad_df = pd.read_csv(os.path.join(args.data, 'BS2_rec_dom_ad.txt'), sep='\t')
+bs2_hom_het_ad_df = pd.read_csv(os.path.join(args.data, 'BS2_rec_dom_ad.txt.gz'), compression='gzip', sep='\t')
 
 rec_list = []
 dom_list = []
@@ -164,7 +165,7 @@ PM1_str = ''
 for i in open(os.path.join(args.data, 'PM1.txt'), 'r').readlines():
     PM1_str += i.strip('\n')
 
-repeat_dict = open(os.path.join(args.data, 'repeat_dict.hg38'), 'r')
+repeat_dict = gzip.open(os.path.join(args.data, 'repeat_dict.hg38.gz'), 'rt')
 repeat_reg = json.load(repeat_dict)
 
 print('Databases loaded')
@@ -684,7 +685,7 @@ def BS1(subdf):
 
     for i in range(len(subdf)):
         if not pd.isna(subdf.loc[i, 'gnomad3.af']):
-            if float(subdf.loc[i, 'gnomad3.af']) > 0.005:
+            if float(subdf.loc[i, 'gnomad3.af']) > 0.05:
                 BS1_crit.append(1)
             else:
                 BS1_crit.append(0)
