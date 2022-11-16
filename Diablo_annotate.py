@@ -6,7 +6,7 @@ import argparse
 import pandas as pd
 import json
 from multiprocessing.pool import Pool
-from numpy import array_split, ceil
+import numpy as np
 from time import time
 import platform
 import gzip
@@ -29,16 +29,16 @@ args = parser.parse_args()
 file_input = os.path.abspath(args.input)
 file_output = os.path.abspath(args.output)
 
-if args.input is None:
-    raise Exception("Input is missing (-i)")
-else:
-    if platform.system() == 'Windows':
-        mod_n = file_input.split('\\')[-1].split('.')[0]
-        mod_d = file_output.strip(file_output.split('\\')[-1])
-        os.system(f"oc run {file_input} -l hg38 -t tsv -a {ACMG_DB} -n {mod_n} -d {mod_d}")
-    else:
-        os.system(f"oc run {file_input} -l hg38 -t tsv -a {ACMG_DB} -n {file_input.split('/')[-1].split('.')[0]} "
-                  f"-d {file_output.strip(file_output.split('/')[-1])}")
+# if args.input is None:
+#     raise Exception("Input is missing (-i)")
+# else:
+#     if platform.system() == 'Windows':
+#         mod_n = file_input.split('\\')[-1].split('.')[0]
+#         mod_d = file_output.strip(file_output.split('\\')[-1])
+#         os.system(f"oc run {file_input} -l hg38 -t tsv -a {ACMG_DB} -n {mod_n} -d {mod_d}")
+#     else:
+#         os.system(f"oc run {file_input} -l hg38 -t tsv -a {ACMG_DB} -n {file_input.split('/')[-1].split('.')[0]} "
+#                   f"-d {file_output.strip(file_output.split('/')[-1])}")
 
 start = time()
 
@@ -46,7 +46,7 @@ print('Loading dataframe...')
 
 df = pd.read_csv(
     str(file_output.strip(file_output.split('/')[-1]) + file_input.split('/')[-1].split('.')[0] + '.variant.tsv'),
-    sep='\t', comment='#', low_memory=False)
+    sep='\t', comment='#')
 
 print('Dataframe loaded')
 
@@ -137,17 +137,17 @@ for line in gzip.open(os.path.join(args.data, 'BS2_mod.txt.gz'), 'rt').readlines
 
 bs2_hom_het_ad_df = pd.read_csv(os.path.join(args.data, 'BS2_rec_dom_ad.txt.gz'), compression='gzip', sep='\t')
 
-rec_list = []
-dom_list = []
-adult_list = []
+rec_list = set()
+dom_list = set()
+adult_list = set()
 for gene, rec, dom, adult in zip(bs2_hom_het_ad_df['gene'], bs2_hom_het_ad_df['recessive'],
                                  bs2_hom_het_ad_df['dominant'], bs2_hom_het_ad_df['adult_onset']):
     if rec == 1:
-        rec_list.append(gene)
+        rec_list.add(gene)
     if dom == 1:
-        dom_list.append(gene)
+        dom_list.add(gene)
     if adult == 1:
-        adult_list.append(gene)
+        adult_list.add(gene)
 
 BP1_list = []
 for i in open(os.path.join(args.data, 'BP1.txt'), 'r').readlines():
@@ -173,10 +173,10 @@ print('Databases loaded')
 
 def PVS1(subdf):
     PVS1_crit = []
-    for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'so']) and not pd.isna(subdf.loc[i, 'hpo.id']) and (
-                str(subdf.loc[i, 'so']).find('frameshift') > -1 or str(subdf.loc[i, 'so']) == 'stop_gained' or
-                str(subdf.loc[i, 'so']) == 'splice_site_variant'):
+    for so, hpo in zip(subdf['so'].to_numpy(), subdf['hpo.id'].to_numpy()):
+        if not pd.isna(so) and not pd.isna(hpo) and (
+                str(so).find('frameshift') > -1 or str(so) == 'stop_gained' or
+                str(so) == 'splice_site_variant'):
             PVS1_crit.append(1)
         else:
             PVS1_crit.append(0)
@@ -189,16 +189,17 @@ def PVS1(subdf):
 def PS1(subdf):
     PS1_crit = []
 
-    for i in range(len(subdf)):
-        if str(subdf.loc[i, 'so']) == 'missense_variant':
+    for so, chrom, pos, achange in zip(subdf['so'].to_numpy(), subdf['chrom'].to_numpy(), subdf['pos'].to_numpy(),
+                                       subdf['achange'].to_numpy()):
+        if str(so) == 'missense_variant':
 
-            if str(str(subdf.loc[i, 'chrom']) + ':' + str(subdf.loc[i, 'pos'])) in PS1_chrst:
+            if str(chrom) + ':' + str(pos) in PS1_chrst:
 
-                if str(subdf.loc[i, 'achange'].split('p.')[1][0:3]) == str(PS1_refa[PS1_chrst.index(
-                        str(str(subdf.loc[i, 'chrom']) + ':' + str(subdf.loc[i, 'pos'])))]) and str(
-                    subdf.loc[i, 'achange'].split('p.')[1][-3:]) == \
+                if str(achange.split('p.')[1][0:3]) == str(PS1_refa[PS1_chrst.index(
+                        str(str(chrom) + ':' + str(pos)))]) and str(
+                    achange.split('p.')[1][-3:]) == \
                         str(PS1_alta[
-                                PS1_chrst.index(str(str(subdf.loc[i, 'chrom']) + ':' + str(subdf.loc[i, 'pos'])))]):
+                                PS1_chrst.index(str(str(chrom) + ':' + str(pos)))]):
                     PS1_crit.append(1)
                 else:
                     PS1_crit.append(0)
@@ -215,12 +216,12 @@ def PS1(subdf):
 def PS3(subdf):
     PS3_crit = []
 
-    for i in range(len(subdf)):
-        if (not pd.isna(subdf.loc[i, 'clinvar.sig'])) and (
-                str(subdf.loc[i, 'clinvar.sig']).find('Pathogenic') > -1) and (
-                str(subdf.loc[i, 'clinvar.rev_stat']).find('reviewed by expert panel') > -1 or
-                str(subdf.loc[i, 'clinvar.rev_stat']).find('practice guideline') > -1 or
-                str(subdf.loc[i, 'clinvar.rev_stat']).find('no conflicts') > -1):
+    for sig, rev_stat in zip(subdf['clinvar.sig'].to_numpy(), subdf['clinvar.rev_stat'].to_numpy()):
+        if (not pd.isna(sig)) and (
+                str(sig).find('Pathogenic') > -1) and (
+                str(rev_stat).find('reviewed by expert panel') > -1 or
+                str(rev_stat).find('practice guideline') > -1 or
+                str(rev_stat).find('no conflicts') > -1):
             PS3_crit.append(1)
         else:
             PS3_crit.append(0)
@@ -232,14 +233,13 @@ def PS3(subdf):
 
 def PM1(subdf):
     PM1_crit = []
-    for i in range(len(subdf)):
+    for so, dom in zip(subdf['so'].to_numpy(), subdf['interpro.domain'].to_numpy()):
         counter = 0
-        if not pd.isna(subdf.loc[i, 'interpro.domain']):
-            for domain in str(subdf.loc[i, 'interpro.domain'])[2:-2].replace("'", "").split('|'):
+        if not pd.isna(dom):
+            for domain in str(dom)[2:-2].replace("'", "").split('|'):
                 if domain in PM1_str:
                     counter += 1
-        if not pd.isna(subdf.loc[i, 'interpro.domain']) and \
-                subdf.loc[i, 'so'] == 'missense_variant' and counter == 0:
+        if not pd.isna(dom) and so == 'missense_variant' and counter == 0:
             PM1_crit.append(1)
         else:
             PM1_crit.append(0)
@@ -252,22 +252,22 @@ def PM1(subdf):
 def PM2(subdf):
     PM2_crit = []
 
-    for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'hugo']):
-            if not pd.isna(subdf.loc[i, 'gnomad3.af']):
+    for hugo, gnom_af in zip(subdf['hugo'].to_numpy(), subdf['gnomad3.af'].to_numpy()):
+        if not pd.isna(hugo):
+            if not pd.isna(gnom_af):
                 try:
-                    if (float(subdf.loc[i, 'gnomad3.af']) <= 0.0001 and float(
-                            pli_dict[subdf.loc[i, 'hugo']]['pli']) >= 0.85) or (
-                            (float(subdf.loc[i, 'gnomad3.af']) <= 0.05) and (
-                            float(pli_dict[subdf.loc[i, 'hugo']]['pli']) <= 0.85 or
-                            pli_dict[subdf.loc[i, 'hugo']]['pli'] == 'nan')):
+                    if (float(gnom_af) <= 0.0001 and float(
+                            pli_dict[hugo]['pli']) >= 0.85) or (
+                            (float(gnom_af) <= 0.05) and (
+                            float(pli_dict[hugo]['pli']) <= 0.85 or
+                            pli_dict[hugo]['pli'] == 'nan')):
                         PM2_crit.append(1)
                     else:
                         PM2_crit.append(0)
                 except KeyError:
                     PM2_crit.append(0)
 
-            elif pd.isna(subdf.loc[i, 'gnomad3.af']):
+            elif pd.isna(gnom_af):
                 PM2_crit.append(1)
 
         else:
@@ -281,7 +281,8 @@ def PM4_BP3(subdf):
     PM4_crit = []
     BP3_crit = []
 
-    for so, chrom, pos, domain in zip(subdf['so'], subdf['chrom'], subdf['pos'], subdf['interpro.domain']):
+    for so, chrom, pos, domain in zip(subdf['so'].to_numpy(), subdf['chrom'].to_numpy(), subdf['pos'].to_numpy(),
+                                      subdf['interpro.domain'].to_numpy()):
 
         if str(so).find('inframe') > -1:
             list_of_all_first_elements = [item[0] for item in repeat_reg[str(chrom)]]
@@ -336,13 +337,14 @@ def PM4_BP3(subdf):
 def PM5(subdf):
     PM5_crit = []
 
-    for i in range(len(subdf)):
-        if subdf.loc[i, 'so'] == 'missense_variant':
-            if str(str(subdf.loc[i, 'chrom']) + ':' + str(subdf.loc[i, 'pos'])) in PS1_chrst:
-                index_PS1 = PS1_chrst.index(str(str(subdf.loc[i, 'chrom']) + ':' + str(subdf.loc[i, 'pos'])))
+    for so, chrom, pos, achange in zip(subdf['so'].to_numpy(), subdf['chrom'].to_numpy(), subdf['pos'].to_numpy(),
+                                       subdf['achange'].to_numpy()):
+        if so == 'missense_variant':
+            if str(str(chrom) + ':' + str(pos)) in PS1_chrst:
+                index_PS1 = PS1_chrst.index(str(str(chrom) + ':' + str(pos)))
 
-                if str(subdf.loc[i, 'achange'].split('p.')[1][0:3]) == str(PS1_refa[index_PS1]) and str(
-                        subdf.loc[i, 'achange'].split('p.')[1][-3:]) != str(PS1_alta[index_PS1]):
+                if str(achange.split('p.')[1][0:3]) == str(PS1_refa[index_PS1]) and str(
+                        achange.split('p.')[1][-3:]) != str(PS1_alta[index_PS1]):
                     PM5_crit.append(1)
                 else:
                     PM5_crit.append(0)
@@ -359,9 +361,9 @@ def PM5(subdf):
 def PP2(subdf):
     PP2_crit = []
 
-    for i in range(len(subdf)):
-        if str(subdf.loc[i, 'so']) == 'missense_variant':
-            if str(subdf.loc[i, 'hugo']) in PP2_list:
+    for so, hugo in zip(subdf['so'].to_numpy(), subdf['hugo'].to_numpy()):
+        if str(so) == 'missense_variant':
+            if str(hugo) in PP2_list:
                 PP2_crit.append(1)
             else:
                 PP2_crit.append(0)
@@ -377,33 +379,45 @@ def PP3_BP4(subdf):
     PP3_crit = []
     BP4_crit = []
 
-    for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'sift.score']):
-            if float(subdf.loc[i, 'sift.score']) <= 0.05:
+    for sift_score, lrt_score, \
+        taste, assess, fatmm, pro, \
+        mvm, lr, mkl, geno, grp in zip(subdf['sift.score'].to_numpy(),
+                                       subdf['lrt.lrt_pred'].to_numpy(),
+                                       subdf['mutationtaster.prediction'].to_numpy(),
+                                       subdf['mutation_assessor.impact'].to_numpy(),
+                                       subdf['fathmm.fathmm_pred'].to_numpy(),
+                                       subdf['provean.score'].to_numpy(),
+                                       subdf['metasvm.pred'].to_numpy(),
+                                       subdf['metalr.pred'].to_numpy(),
+                                       subdf['fathmm_mkl.fathmm_mkl_coding_pred'].to_numpy(),
+                                       subdf['genocanyon.score'].to_numpy(),
+                                       subdf['gerp.gerp_rs'].to_numpy()):
+        if not pd.isna(sift_score):
+            if float(sift_score) <= 0.05:
                 sift = 1
-            elif float(subdf.loc[i, 'sift.score']) > 0.05:
+            elif float(sift_score) > 0.05:
                 sift = -1
             else:
                 sift = 0
         else:
             sift = 0
 
-        if not pd.isna(subdf.loc[i, 'lrt.lrt_pred']):
-            if str(subdf.loc[i, 'lrt.lrt_pred'])[0] == 'D':
+        if not pd.isna(lrt_score):
+            if str(lrt_score)[0] == 'D':
                 lrt = 1
-            elif str(subdf.loc[i, 'lrt.lrt_pred'])[0] == 'N':
+            elif str(lrt_score)[0] == 'N':
                 lrt = -1
             else:
                 lrt = 0
         else:
             lrt = 0
 
-        if not pd.isna(subdf.loc[i, 'mutationtaster.prediction']):
-            if str(subdf.loc[i, 'mutationtaster.prediction']).find('Disease') > -1 or str(
-                    subdf.loc[i, 'mutationtaster.prediction']).find('Damaging') > -1:
+        if not pd.isna(taste):
+            if str(taste).find('Disease') > -1 or str(
+                    taste).find('Damaging') > -1:
                 muttaste = 1
 
-            elif str(subdf.loc[i, 'mutationtaster.prediction']).find('Polymorphism') > -1:
+            elif str(taste).find('Polymorphism') > -1:
                 muttaste = -1
 
             else:
@@ -411,52 +425,52 @@ def PP3_BP4(subdf):
         else:
             muttaste = 0
 
-        if not pd.isna(subdf.loc[i, 'mutation_assessor.impact']):
-            if str(subdf.loc[i, 'mutation_assessor.impact'])[0] == 'h' or \
-                    str(subdf.loc[i, 'mutation_assessor.impact'])[0] == 'm':
+        if not pd.isna(assess):
+            if str(assess)[0] == 'h' or \
+                    str(assess)[0] == 'm':
                 mutassessor = 1
-            elif str(subdf.loc[i, 'mutation_assessor.impact'])[0] == 'l' or \
-                    str(subdf.loc[i, 'mutation_assessor.impact'])[0] == 'n':
+            elif str(assess)[0] == 'l' or \
+                    str(assess)[0] == 'n':
                 mutassessor = -1
             else:
                 mutassessor = 0
         else:
             mutassessor = 0
 
-        if not pd.isna(subdf.loc[i, 'fathmm.fathmm_pred']):
-            if str(subdf.loc[i, 'fathmm.fathmm_pred'])[0] == 'D':
+        if not pd.isna(fatmm):
+            if str(fatmm)[0] == 'D':
                 fathmm = 1
-            elif str(subdf.loc[i, 'fathmm.fathmm_pred'])[0] == 'T':
+            elif str(fatmm)[0] == 'T':
                 fathmm = -1
             else:
                 fathmm = 0
         else:
             fathmm = 0
 
-        if not pd.isna(subdf.loc[i, 'provean.score']):
-            if float(subdf.loc[i, 'provean.score']) <= -2.5:
+        if not pd.isna(pro):
+            if float(pro) <= -2.5:
                 provean = 1
-            elif float(subdf.loc[i, 'provean.score']) > -2.5:
+            elif float(pro) > -2.5:
                 provean = -1
             else:
                 provean = 0
         else:
             provean = 0
 
-        if not pd.isna(subdf.loc[i, 'metasvm.pred']):
-            if str(subdf.loc[i, 'metasvm.pred']) == 'Damaging':
+        if not pd.isna(mvm):
+            if str(mvm) == 'Damaging':
                 metasvm = 1
-            elif str(subdf.loc[i, 'metasvm.pred']) == 'Tolerated':
+            elif str(mvm) == 'Tolerated':
                 metasvm = -1
             else:
                 metasvm = 0
         else:
             metasvm = 0
 
-        if not pd.isna(subdf.loc[i, 'metalr.pred']):
-            if str(subdf.loc[i, 'metalr.pred']) == 'Damaging':
+        if not pd.isna(lr):
+            if str(lr) == 'Damaging':
                 metalr = 1
-            elif str(subdf.loc[i, 'metalr.pred']) == 'Tolerated':
+            elif str(lr) == 'Tolerated':
                 metalr = -1
             else:
                 metalr = 0
@@ -464,30 +478,30 @@ def PP3_BP4(subdf):
         else:
             metalr = 0
 
-        if not pd.isna(subdf.loc[i, 'fathmm_mkl.fathmm_mkl_coding_pred']):
-            if str(subdf.loc[i, 'fathmm_mkl.fathmm_mkl_coding_pred']) == 'Damaging':
+        if not pd.isna(mkl):
+            if str(mkl) == 'Damaging':
                 fathmm_mkl = 1
-            elif str(subdf.loc[i, 'fathmm_mkl.fathmm_mkl_coding_pred']) == 'Neutral':
+            elif str(mkl) == 'Neutral':
                 fathmm_mkl = -1
             else:
                 fathmm_mkl = 0
         else:
             fathmm_mkl = 0
 
-        if not pd.isna(subdf.loc[i, 'genocanyon.score']):
-            if float(subdf.loc[i, 'genocanyon.score']) > 0.5:
+        if not pd.isna(geno):
+            if float(geno) > 0.5:
                 genocanyon = 1
-            elif float(subdf.loc[i, 'genocanyon.score']) <= 0.5:
+            elif float(geno) <= 0.5:
                 genocanyon = -1
             else:
                 genocanyon = 0
         else:
             genocanyon = 0
 
-        if not pd.isna(subdf.loc[i, 'gerp.gerp_rs']):
-            if float(subdf.loc[i, 'gerp.gerp_rs']) >= 2.25:
+        if not pd.isna(grp):
+            if float(grp) >= 2.25:
                 gerp = 1
-            elif float(subdf.loc[i, 'gerp.gerp_rs']) < 2.25:
+            elif float(grp) < 2.25:
                 gerp = -1
             else:
                 gerp = 0
@@ -521,20 +535,20 @@ def PP3_BP4(subdf):
 def PP5(subdf):
     PP5_crit = []
 
-    for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'clinvar.sig']):
-            if (str(subdf.loc[i, 'clinvar.sig']).find('Pathogenic') > -1 or str(subdf.loc[i, 'clinvar.sig']).find(
+    for sig, rev in zip(subdf['clinvar.sig'].to_numpy(), subdf['clinvar.rev_stat'].to_numpy()):
+        if not pd.isna(sig):
+            if (str(sig).find('Pathogenic') > -1 or str(sig).find(
                     'pathogenic') > -1) and (
-                    str(subdf.loc[i, 'clinvar.sig']).find('conflict') < 0 or
-                    str(subdf.loc[i, 'clinvar.sig']).find('Conflict') < 0) and \
-                    (str(subdf.loc[i, 'clinvar.rev_stat']).find('expert') > -1 or
-                     str(subdf.loc[i, 'clinvar.rev_stat']).find('practical') > -1 or
-                     str(subdf.loc[i, 'clinvar.rev_stat']).find('no conflicts') > -1):
+                    str(sig).find('conflict') < 0 or
+                    str(sig).find('Conflict') < 0) and \
+                    (str(rev).find('expert') > -1 or
+                     str(rev).find('practical') > -1 or
+                     str(rev).find('no conflicts') > -1):
                 PP5_crit.append(2)
-            elif (str(subdf.loc[i, 'clinvar.sig']).find('Pathogenic') > -1 or
-                  str(subdf.loc[i, 'clinvar.sig']).find('pathogenic') > -1) and \
-                    (str(subdf.loc[i, 'clinvar.sig']).find('conflict') < 0 or
-                     str(subdf.loc[i, 'clinvar.sig']).find('Conflict') < 0):
+            elif (str(sig).find('Pathogenic') > -1 or
+                  str(sig).find('pathogenic') > -1) and \
+                    (str(sig).find('conflict') < 0 or
+                     str(sig).find('Conflict') < 0):
                 PP5_crit.append(1)
             else:
                 PP5_crit.append(0)
@@ -549,9 +563,9 @@ def PP5(subdf):
 def BA1(subdf):
     BA1_crit = []
 
-    for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'gnomad3.af']):
-            if float(subdf.loc[i, 'gnomad3.af']) > 0.05:
+    for af in subdf['gnomad3.af'].to_numpy():
+        if not pd.isna(af):
+            if float(af) > 0.05:
                 BA1_crit.append(1)
             else:
                 BA1_crit.append(0)
@@ -566,24 +580,28 @@ def BA1(subdf):
 def BS2(subdf):
     BS2_crit = []
 
-    for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'hugo']):
-            if str(subdf.loc[i, 'hugo']) in adult_list:
+    for hugo, ref, alt, pos, chrom in zip(subdf['hugo'].to_numpy(),
+                                          subdf['ref_base'].to_numpy(),
+                                          subdf['alt_base'].to_numpy(),
+                                          subdf['pos'].to_numpy(),
+                                          subdf['chrom'].to_numpy()):
+        if not pd.isna(hugo):
+            if str(hugo) in adult_list:
                 BS2_crit.append(0)
-            elif str(subdf.loc[i, 'hugo']) in rec_list:
-                key_snv = str(subdf.loc[i, 'ref_base']) + '_' + str(subdf.loc[i, 'alt_base'])
+            elif str(hugo) in rec_list:
+                key_snv = str(ref) + '_' + str(alt)
                 try:
-                    if key_snv == BS2_hom_het_dict["hom"][str(subdf.loc[i, 'chrom'])][str(subdf.loc[i, 'pos'])]:
+                    if key_snv == BS2_hom_het_dict["hom"][str(chrom)][str(pos)]:
                         BS2_crit.append(1)
                     else:
                         BS2_crit.append(0)
                 except KeyError:
                     BS2_crit.append(0)
 
-            elif str(subdf.loc[i, 'hugo']) in dom_list:
-                key_snv = str(subdf.loc[i, 'ref_base']) + '_' + str(subdf.loc[i, 'alt_base'])
+            elif str(hugo) in dom_list:
+                key_snv = str(ref) + '_' + str(alt)
                 try:
-                    if key_snv == BS2_hom_het_dict["het"][str(subdf.loc[i, 'chrom'])][str(subdf.loc[i, 'pos'])]:
+                    if key_snv == BS2_hom_het_dict["het"][str(chrom)][str(pos)]:
                         BS2_crit.append(1)
                     else:
                         BS2_crit.append(0)
@@ -602,12 +620,12 @@ def BS2(subdf):
 def BS3(subdf):
     BS3_crit = []
 
-    for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'clinvar.sig']):
-            if (str(subdf.loc[i, 'clinvar.sig']).find('Benign') > -1 or
-                str(subdf.loc[i, 'clinvar.sig']).find('benign') > -1) and \
-                    (str(subdf.loc[i, 'clinvar.rev_stat']).find('expert') > -1 or
-                     str(subdf.loc[i, 'clinvar.rev_stat']).find('practical') > -1):
+    for sig, rev in zip(subdf['clinvar.sig'].to_numpy(), subdf['clinvar.rev_stat'].to_numpy()):
+        if not pd.isna(sig):
+            if (str(sig).find('Benign') > -1 or
+                str(sig).find('benign') > -1) and \
+                    (str(rev).find('expert') > -1 or
+                     str(rev).find('practical') > -1):
                 BS3_crit.append(1)
             else:
                 BS3_crit.append(0)
@@ -622,9 +640,9 @@ def BS3(subdf):
 def BP1(subdf):
     BP1_crit = []
 
-    for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'so']) and not pd.isna(subdf.loc[i, 'hugo']):
-            if str(subdf.loc[i, 'so']) == 'missense_variant' and str(subdf.loc[i, 'hugo']) in BP1_list:
+    for so, hugo in zip(subdf['so'].to_numpy(), subdf['hugo'].to_numpy()):
+        if not pd.isna(so) and not pd.isna(hugo):
+            if str(so) == 'missense_variant' and str(hugo) in BP1_list:
                 BP1_crit.append(1)
             else:
                 BP1_crit.append(0)
@@ -639,9 +657,9 @@ def BP1(subdf):
 def BP6(subdf):
     BP6_crit = []
 
-    for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'clinvar.sig']):
-            if str(subdf.loc[i, 'clinvar.sig']).find('Benign') > -1 or str(subdf.loc[i, 'clinvar.sig']).find(
+    for sig in subdf['clinvar.sig'].to_numpy():
+        if not pd.isna(sig):
+            if str(sig).find('Benign') > -1 or str(sig).find(
                     'benign') > -1:
                 BP6_crit.append(1)
             else:
@@ -657,16 +675,20 @@ def BP6(subdf):
 def BP7(subdf):
     BP7_crit = []
 
-    for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'so']):
-            if str(subdf.loc[i, 'so']) == 'synonymous_variant':
-                if (not pd.isna(subdf.loc[i, 'spliceai.ds_ag']) or not pd.isna(
-                        subdf.loc[i, 'spliceai.ds_al']) or not pd.isna(
-                    subdf.loc[i, 'spliceai.ds_dg']) or not pd.isna(
-                    subdf.loc[i, 'spliceai.ds_dl'])) and (
-                        float(subdf.loc[i, 'spliceai.ds_ag']) >= 0.25 or
-                        float(subdf.loc[i, 'spliceai.ds_al']) >= 0.25 or
-                        float(subdf.loc[i, 'spliceai.ds_dg']) >= 0.25 or float(subdf.loc[i, 'spliceai.ds_dl']) >= 0.25):
+    for so, ag, al, dg, dl in zip(subdf['so'].to_numpy(),
+                                  subdf['spliceai.ds_ag'].to_numpy(),
+                                  subdf['spliceai.ds_al'].to_numpy(),
+                                  subdf['spliceai.ds_dg'].to_numpy(),
+                                  subdf['spliceai.ds_dl'].to_numpy()):
+        if not pd.isna(so):
+            if str(so) == 'synonymous_variant':
+                if (not pd.isna(ag) or
+                    not pd.isna(al) or
+                    not pd.isna(dg) or
+                    not pd.isna(dl)) and (float(ag) >= 0.25 or
+                                          float(al) >= 0.25 or
+                                          float(dg) >= 0.25 or
+                                          float(dl) >= 0.25):
                     BP7_crit.append(0)
                 else:
                     BP7_crit.append(1)
@@ -683,9 +705,9 @@ def BP7(subdf):
 def BS1(subdf):
     BS1_crit = []
 
-    for i in range(len(subdf)):
-        if not pd.isna(subdf.loc[i, 'gnomad3.af']):
-            if float(subdf.loc[i, 'gnomad3.af']) > 0.05:
+    for af in subdf['gnomad3.af'].to_numpy():
+        if not pd.isna(af):
+            if float(af) > 0.05:
                 BS1_crit.append(1)
             else:
                 BS1_crit.append(0)
@@ -719,15 +741,33 @@ def pathogenicity_assignment(subdf):
     probabilities = []
     predictions = []
 
-    for i in range(len(subdf)):
-        PVS = int(subdf.loc[i, 'PVS1'])
-        PS = int(subdf.loc[i, 'PS1']) + int(subdf.loc[i, 'PS3'])
-        PM = int(subdf.loc[i, 'PM1']) + int(subdf.loc[i, 'PM2']) + int(subdf.loc[i, 'PM4']) + int(subdf.loc[i, 'PM5'])
-        PP = int(subdf.loc[i, 'PP2']) + int(subdf.loc[i, 'PP3']) + int(subdf.loc[i, 'PP5'])
-        BS = int(subdf.loc[i, 'BS2']) + int(subdf.loc[i, 'BS3']) + int(subdf.loc[i, 'BS1'])
-        BP = int(subdf.loc[i, 'BP3']) + int(subdf.loc[i, 'BP4']) + int(subdf.loc[i, 'BP1']) + int(
-            subdf.loc[i, 'BP6']) + int(subdf.loc[i, 'BP7'])
-        BA1 = int(subdf.loc[i, 'BA1'])
+    for pvs1, ps1, ps3, pm1, pm2, pm4, pm5, pp2, pp3, pp5, bs2, bs3, bs1, bp3, bp4, bp1, bp6, bp7, ba1 in \
+            zip(subdf['PVS1'].to_numpy(),
+                subdf['PS1'].to_numpy(),
+                subdf['PS3'].to_numpy(),
+                subdf['PM1'].to_numpy(),
+                subdf['PM2'].to_numpy(),
+                subdf['PM4'].to_numpy(),
+                subdf['PM5'].to_numpy(),
+                subdf['PP2'].to_numpy(),
+                subdf['PP3'].to_numpy(),
+                subdf['PP5'].to_numpy(),
+                subdf['BS2'].to_numpy(),
+                subdf['BS3'].to_numpy(),
+                subdf['BS1'].to_numpy(),
+                subdf['BP3'].to_numpy(),
+                subdf['BP4'].to_numpy(),
+                subdf['BP1'].to_numpy(),
+                subdf['BP6'].to_numpy(),
+                subdf['BP7'].to_numpy(),
+                subdf['BA1'].to_numpy()):
+        PVS = int(pvs1)
+        PS = int(ps1) + int(ps3)
+        PM = int(pm1) + int(pm2) + int(pm4) + int(pm5)
+        PP = int(pp2) + int(pp3) + int(pp5)
+        BS = int(bs2) + int(bs3) + int(bs1)
+        BP = int(bp3) + int(bp4) + int(bp1) + int(bp6) + int(bp7)
+        BA1 = int(ba1)
         pc = 0.10
         X = 2
 
@@ -794,9 +834,9 @@ def main(subdf):
 
 
 if args.threads >= 2:
-    split_df = array_split(df, args.threads)
+    df = np.array_split(df, args.threads)
     m_list = []
-    for part in split_df:
+    for part in df:
         tupl = pd.DataFrame(part)
         m_list.append(tupl.reset_index())
 
@@ -808,34 +848,39 @@ if args.threads >= 2:
     pool.join()
 
 else:
-    final_pool = main(df)
+    df = main(df)
 
 print('Sorting...')
 
-pat_final_pool = final_pool.loc[final_pool['ACMG'] == 'Pathogenic'].sort_values(by=['Score'], ascending=False)
+df['ACMG'] = pd.Categorical(df['ACMG'], ['Pathogenic', 'Likely Pathogenic', 'VUS',
+                                         'Likely Benign', 'Benign', 'Benign auto'])
+# pat_final_pool = final_pool.loc[final_pool['ACMG'] == 'Pathogenic'].sort_values(by=['Score'], ascending=False)
+#
+# like_pat_final_pool = final_pool.loc[final_pool['ACMG'] == 'Likely Pathogenic'].sort_values(by=['Score'],
+#                                                                                             ascending=False)
+#
+# VUS_final_pool = final_pool.loc[final_pool['ACMG'] == 'VUS'].sort_values(by=['Score'], ascending=False)
+#
+# like_ben_final_pool = final_pool.loc[final_pool['ACMG'] == 'Likely Benign'].sort_values(by=['Score'], ascending=False)
+#
+# ben_final_pool = final_pool.loc[final_pool['ACMG'].isin(['Benign', 'Benign auto'])].sort_values(by=['Score'],
+#                                                                                                 ascending=False)
+#
+# final_final_pool = pd.concat([pat_final_pool, like_pat_final_pool, VUS_final_pool, like_ben_final_pool,
+# ben_final_pool])
 
-like_pat_final_pool = final_pool.loc[final_pool['ACMG'] == 'Likely Pathogenic'].sort_values(by=['Score'],
-                                                                                            ascending=False)
-
-VUS_final_pool = final_pool.loc[final_pool['ACMG'] == 'VUS'].sort_values(by=['Score'], ascending=False)
-
-like_ben_final_pool = final_pool.loc[final_pool['ACMG'] == 'Likely Benign'].sort_values(by=['Score'], ascending=False)
-
-ben_final_pool = final_pool.loc[final_pool['ACMG'].isin(['Benign', 'Benign auto'])].sort_values(by=['Score'],
-                                                                                                ascending=False)
-
-final_final_pool = pd.concat([pat_final_pool, like_pat_final_pool, VUS_final_pool, like_ben_final_pool, ben_final_pool])
+df = df.sort_values(by=['ACMG', 'Score'], ascending=[True, False])
 
 if args.size is None:
-    final_final_pool.to_csv(os.path.abspath(args.output), sep='\t', index=False)
+    df.to_csv(os.path.abspath(args.output), sep='\t', index=False)
 else:
-    final_final_pool.head(args.size).to_csv(os.path.abspath(args.output), sep='\t', index=False)
+    df.head(args.size).to_csv(os.path.abspath(args.output), sep='\t', index=False)
 
 remove()
 
 if args.splice is not False:
     print('Writing file with splice variants...')
-    splice(final_final_pool).to_csv(os.path.abspath(args.output).replace('.tsv', '_splice.tsv'), sep='\t', index=False)
+    splice(df).to_csv(os.path.abspath(args.output).replace('.tsv', '_splice.tsv'), sep='\t', index=False)
 else:
     pass
 
@@ -843,4 +888,4 @@ print('Success!')
 
 stop = time()
 
-print(f'Finished in {str(ceil(stop - start))} seconds')
+print(f'Finished in {str(np.ceil(stop - start))} seconds')
