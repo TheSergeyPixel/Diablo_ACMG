@@ -772,7 +772,7 @@ def pathogenicity_assignment(subdf):
         X = 2
 
         if BA1 != 1:
-            odds_path = 350 ** ((PP / (X ** 3)) + (PM / X ** 2) + (PS / X) + (PVS / 1) - (BP / X ** 2) - (BS / X))
+            odds_path = 350 ** ((PP / (X ** 3)) + (PM / X ** 2) + (PS / X) + (PVS / 1) - (BP / X ** 3) - (BS / X))
             proba = (odds_path * pc) / (((odds_path - 1) * pc) + 1)
             probability = float("%.4f" % proba)
 
@@ -854,20 +854,6 @@ print('Sorting...')
 
 df['ACMG'] = pd.Categorical(df['ACMG'], ['Pathogenic', 'Likely Pathogenic', 'VUS',
                                          'Likely Benign', 'Benign', 'Benign auto'])
-# pat_final_pool = final_pool.loc[final_pool['ACMG'] == 'Pathogenic'].sort_values(by=['Score'], ascending=False)
-#
-# like_pat_final_pool = final_pool.loc[final_pool['ACMG'] == 'Likely Pathogenic'].sort_values(by=['Score'],
-#                                                                                             ascending=False)
-#
-# VUS_final_pool = final_pool.loc[final_pool['ACMG'] == 'VUS'].sort_values(by=['Score'], ascending=False)
-#
-# like_ben_final_pool = final_pool.loc[final_pool['ACMG'] == 'Likely Benign'].sort_values(by=['Score'], ascending=False)
-#
-# ben_final_pool = final_pool.loc[final_pool['ACMG'].isin(['Benign', 'Benign auto'])].sort_values(by=['Score'],
-#                                                                                                 ascending=False)
-#
-# final_final_pool = pd.concat([pat_final_pool, like_pat_final_pool, VUS_final_pool, like_ben_final_pool,
-# ben_final_pool])
 
 df = df.sort_values(by=['ACMG', 'Score'], ascending=[True, False])
 
