@@ -12,11 +12,11 @@ import platform
 import gzip
 
 ACMG_DB = 'clinvar dbsnp fathmm fathmm_mkl genocanyon gerp gnomad3 interpro lrt metalr metasvm ' \
-          'mutation_assessor mutationtaster omim polyphen2 provean sift siphy spliceai hpo gnomad3_counts'
+          'mutation_assessor mutationtaster omim polyphen2 provean sift siphy spliceai hpo'
 
 parser = argparse.ArgumentParser(description='DIABLO ANNOTATE')
 
-parser.add_argument('-i', '--input', required=True, help='Input a vcf file', type=str)
+parser.add_argument('-i', '--input', required=True, help='Input as vcf or annotated tsv file', type=str)
 parser.add_argument('-o', '--output', required=True, help='Output in tsv format (has to end with ".tsv")', type=str)
 parser.add_argument('-s', '--size', required=False, help='Number of lines in output', type=int)
 parser.add_argument('-d', '--data', required=True, help='Folder with databases', type=str)
@@ -29,24 +29,27 @@ args = parser.parse_args()
 file_input = os.path.abspath(args.input)
 file_output = os.path.abspath(args.output)
 
-# if args.input is None:
-#     raise Exception("Input is missing (-i)")
-# else:
-#     if platform.system() == 'Windows':
-#         mod_n = file_input.split('\\')[-1].split('.')[0]
-#         mod_d = file_output.strip(file_output.split('\\')[-1])
-#         os.system(f"oc run {file_input} -l hg38 -t tsv -a {ACMG_DB} -n {mod_n} -d {mod_d}")
-#     else:
-#         os.system(f"oc run {file_input} -l hg38 -t tsv -a {ACMG_DB} -n {file_input.split('/')[-1].split('.')[0]} "
-#                   f"-d {file_output.strip(file_output.split('/')[-1])}")
+if args.input is None:
+    raise Exception("Input is missing (-i)")
+else:
+    if platform.system() == 'Windows' and args.input[-3:] != 'tsv':
+        mod_n = file_input.split('\\')[-1].split('.')[0]
+        mod_d = file_output.strip(file_output.split('\\')[-1])
+        os.system(f"oc run {file_input} -l hg38 -t tsv -a {ACMG_DB} -n {mod_n} -d {mod_d}")
+    elif platform.system() != 'Windows' and args.input[-3:] != 'tsv':
+        os.system(f"oc run {file_input} -l hg38 -t tsv -a {ACMG_DB} -n {file_input.split('/')[-1].split('.')[0]}"
+                  f" -d {file_output.strip(file_output.split('/')[-1])}")
 
 start = time()
 
 print('Loading dataframe...')
 
-df = pd.read_csv(
-    str(file_output.strip(file_output.split('/')[-1]) + file_input.split('/')[-1].split('.')[0] + '.variant.tsv'),
-    sep='\t', comment='#')
+if args.input[-3:] == 'tsv':
+    df = pd.read_csv(str(os.path.abspath(args.input)), sep='\t', comment='#')
+else:
+    df = pd.read_csv(
+        str(file_output.strip(file_output.split('/')[-1]) + file_input.split('/')[-1].split('.')[0] + '.variant.tsv'),
+        sep='\t', comment='#')
 
 print('Dataframe loaded')
 
@@ -155,7 +158,7 @@ for i in open(os.path.join(args.data, 'BP1.txt'), 'r').readlines():
 
 PP2_list = []
 for i in open(os.path.join(args.data, 'PP2.txt'), 'r').readlines():
-    PP2_list.append(i.replace('\n', ''))
+    PP2_list.append(i.strip('\n'))
 
 pli = open(os.path.join(args.data, 'pli_dict.json'), 'r')
 pli_dict = json.load(pli)
@@ -169,6 +172,8 @@ repeat_dict = gzip.open(os.path.join(args.data, 'repeat_dict.hg38.gz'), 'rt')
 repeat_reg = json.load(repeat_dict)
 
 print('Databases loaded')
+
+print('Starting ACMG assignment')
 
 
 def PVS1(subdf):
