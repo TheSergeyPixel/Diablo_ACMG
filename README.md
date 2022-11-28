@@ -6,7 +6,7 @@ Tool for automated classification of genetic variants according to ACMG criteria
 ## Table of Contents
 
 1. [Usage](#Usage)
-2. [Required databases](#Required Modules)
+2. [Required databases](#required-modules)
 
 ## Usage 
 
