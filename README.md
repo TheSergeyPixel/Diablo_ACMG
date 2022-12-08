@@ -83,5 +83,5 @@ oc module install-base
 ```
 Feel free to report any issues, we are still testing our software. Any suggestions would be highly appreciated :) <br/> 
 <br/>
-Due to complicated installation of open-cravat and large size of its modules, we will try to create a docker image, 
+Due to complicated installation of open-cravat and large size of its modules, we will try our best to create a docker image, 
 that is going to use open-cravat servers for annotation.
