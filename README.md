@@ -38,7 +38,7 @@ Description of options:
 | **Option** | **Description**                                                                                                                           |
 |------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | ```-i```   | Path to your input VCF file or TSV annotated file <br/>(latter case assumes, that you have already annotated your file with open-cravat). |
-| ```-o```   | Path to your '.tsv' output file                                                                                                           |
+| ```-o```   | Path to your '.tsv' output file.                                                                                                          |
 | ```-s```   | You can provide a number of lines (variants),<br/>that you would like to see in your sorted output.                                       |
 | ```-d```   | Path to the **folder** with files required for annotation<br/>(default is 'db', located in the repo).                                     |
 | ```-t```   | Number of parallel processes. **NOTE**: Has high RAM requirements.                                                                        |
