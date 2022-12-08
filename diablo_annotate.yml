@@ -1,0 +1,8 @@
+name: diablo_acmg
+
+dependencies:
+  - pandas>=1.5.1
+  - numpy>=1.23.4
+  - pip
+  - pip:
+    - open-cravat

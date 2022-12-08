@@ -14,13 +14,13 @@ import gzip
 ACMG_DB = 'clinvar dbsnp fathmm fathmm_mkl genocanyon gerp gnomad3 interpro lrt metalr metasvm ' \
           'mutation_assessor mutationtaster omim polyphen2 provean sift siphy spliceai hpo'
 
-parser = argparse.ArgumentParser(description='DIABLO ANNOTATE')
+parser = argparse.ArgumentParser(description='DIABLO ACMG')
 
 parser.add_argument('-i', '--input', required=True, help='Input as vcf or annotated tsv file', type=str)
 parser.add_argument('-o', '--output', required=True, help='Output in tsv format (has to end with ".tsv")', type=str)
 parser.add_argument('-s', '--size', required=False, help='Number of lines in output', type=int)
-parser.add_argument('-d', '--data', required=True, help='Folder with databases', type=str)
-parser.add_argument('-t', '--threads', required=False, help='Number of threads to use', type=int, default=1)
+parser.add_argument('-d', '--data', required=False, help='Folder with databases', type=str, default='db')
+parser.add_argument('-t', '--threads', required=False, help='Number of parallel processes', type=int, default=1)
 parser.add_argument('-S', '--splice', required=False,
                     help='Create a separate file with predicted splice variants (SpliceAI)', type=bool, default=False)
 
