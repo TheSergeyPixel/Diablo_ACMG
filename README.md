@@ -1,7 +1,7 @@
 # Diablo ACMG
 Tool for automated classification of genetic variants according to ACMG criteria (implemented with 
 [open-cravat](https://github.com/KarchinLab/open-cravat)). This tool takes VCF file as input, annotates variants with 
-several [modules](#required-modules), assigns ACMG criteria to them and return annotated file in TSV format. 
+several [modules](#required-modules), assigns ACMG criteria to them and returns annotated file in TSV format. 
 
 ## Table of Contents
 
