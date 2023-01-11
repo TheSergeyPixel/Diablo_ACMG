@@ -47,9 +47,15 @@ print('Loading dataframe...')
 if args.input[-3:] == 'tsv':
     df = pd.read_csv(str(os.path.abspath(args.input)), sep='\t', comment='#')
 else:
-    df = pd.read_csv(
-        str(file_output.strip(file_output.split('/')[-1]) + file_input.split('/')[-1].split('.')[0] + '.variant.tsv'),
-        sep='\t', comment='#')
+    if platform.system() == 'Windows':
+        df = pd.read_csv(
+            str(file_output.strip(file_output.split('\\')[-1]) + file_input.split('\\')[-1].split('.')[
+                0] + '.variant.tsv'),
+            sep='\t', comment='#')
+    else:
+        df = pd.read_csv(
+            str(file_output.strip(file_output.split('/')[-1]) +
+                file_input.split('/')[-1].split('.')[0] + '.variant.tsv'), sep='\t', comment='#')
 
 print('Dataframe loaded')
 
@@ -544,7 +550,7 @@ def PP5(subdf):
         if not pd.isna(sig):
             if (str(sig).find('Pathogenic') > -1 or str(sig).find(
                     'pathogenic') > -1) and (
-                    str(sig).find('conflict') < 0 or
+                    str(sig).find('conflict') < 0 and
                     str(sig).find('Conflict') < 0) and \
                     (str(rev).find('expert') > -1 or
                      str(rev).find('practical') > -1 or
@@ -552,7 +558,7 @@ def PP5(subdf):
                 PP5_crit.append(2)
             elif (str(sig).find('Pathogenic') > -1 or
                   str(sig).find('pathogenic') > -1) and \
-                    (str(sig).find('conflict') < 0 or
+                    (str(sig).find('conflict') < 0 and
                      str(sig).find('Conflict') < 0):
                 PP5_crit.append(1)
             else:
