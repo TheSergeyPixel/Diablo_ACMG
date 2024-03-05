@@ -546,7 +546,8 @@ def PP3_BP4(subdf):
 def PP5(subdf):
     PP5_crit = []
 
-    for sig, rev in zip(subdf['clinvar.sig'].to_numpy(), subdf['clinvar.rev_stat'].to_numpy()):
+    for sig, rev, conf in zip(subdf['clinvar.sig'].to_numpy(), subdf['clinvar.rev_stat'].to_numpy(),
+                              subdf['clinvar.sig_conf'].to_numpy()):
         if not pd.isna(sig):
             if (str(sig).find('Pathogenic') > -1 or str(sig).find(
                     'pathogenic') > -1) and (
@@ -561,6 +562,14 @@ def PP5(subdf):
                     (str(sig).find('conflict') < 0 and
                      str(sig).find('Conflict') < 0):
                 PP5_crit.append(1)
+            elif (str(sig).find('conflict') > -1 or
+                  str(sig).find('Conflict') > -1)  \
+                and (str(conf).find('pathogenic') > -1 or
+                     str(conf).find('Pathogenic') > -1) and \
+                    (str(conf).find('benign') < 0 and
+                     str(conf).find('Benign') < 0):
+                PP5_crit.append(1)
+
             else:
                 PP5_crit.append(0)
         else:
@@ -796,13 +805,13 @@ def pathogenicity_assignment(subdf):
             prediction = 'Benign auto'
         elif BS > 2:
             prediction = 'Benign'
-        elif (BS == 1 and BP >= 1) or (BP >= 2):
+        elif (BS == 1 and BP >= 1 and ps3 != 1 and int(pp5) != 2) or (BP >= 2 and ps3 != 1 and int(pp5) != 2):
             prediction = 'Likely Benign'
         elif (PVS == 1 and (PS >= 1 or PM >= 2 or (PM == 1 and PP == 1) or PP >= 2)) or (PS >= 2) or (
                 PS == 1 and (PM >= 3 or (PM == 2 and PP >= 2) or (PM == 1 and PP >= 4))):
             prediction = 'Pathogenic'
         elif (PVS == 1 and PM == 1) or (PS == 1 and PM >= 1) or (PS == 1 and PP >= 2) or (PM >= 3) or (
-                PM >= 2 and PP >= 2) or (PM == 1 and PP >= 4):
+                PM >= 2 and PP >= 2) or (PM == 1 and PP >= 4) or (int(pp5) == 2):
             prediction = 'Likely Pathogenic'
         else:
             prediction = 'VUS'
