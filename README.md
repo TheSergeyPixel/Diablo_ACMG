@@ -86,7 +86,7 @@ Feel free to report any issues, we are still testing our software. Any suggestio
 Due to complicated installation of open-cravat and large size of its modules, we will try our best to create a docker image, 
 that is going to use open-cravat servers for annotation.
 
-**KNOWN ISSUES**
+## Known issues
 
 With the recent update of OpenCravat, the updated ClinVar annotator has been introduced, which interferes with the
 functionality of our software. To be more specific, the final output might have missing information for particular variants.
